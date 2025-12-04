@@ -15,11 +15,11 @@ outputDir: /oak/stanford/groups/henderj/stfan/logs/speech_logs/pt_neural_decoder
 datasetPath: /oak/stanford/groups/henderj/stfan/data/ptDecoder_ctc
 
 seed: 0
-batchSize: 64
+batchSize: 128
 lrStart: 0.02
 lrEnd: 0.02
 l2_decay: 1e-5
-nBatch: 10000
+nBatch: 5000
 
 whiteNoiseSD: 0.8
 constantOffsetSD: 0.2
