@@ -277,6 +277,9 @@ def create_convergence_analysis(df: pd.DataFrame, output_dir: str):
         df: DataFrame with all results
         output_dir: Directory to save plots
     """
+    # Filter out runs from older setup (>30 steps)
+    df = df[df['testCER'].apply(len) <= 30]
+
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     fig.suptitle('Convergence Analysis', fontsize=18, fontweight='bold')
 
