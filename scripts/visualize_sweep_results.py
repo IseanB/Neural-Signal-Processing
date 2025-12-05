@@ -32,15 +32,6 @@ plt.rcParams['font.family'] = 'sans-serif'
 
 
 def load_all_results(sweep_dir: str) -> pd.DataFrame:
-    """
-    Load all sweep results into a comprehensive DataFrame.
-
-    Args:
-        sweep_dir: Path to the sweep output directory
-
-    Returns:
-        DataFrame with all results and metadata
-    """
     rows = []
 
     for run_dir in sorted(Path(sweep_dir).iterdir()):
@@ -176,7 +167,7 @@ def create_comprehensive_dashboard(df: pd.DataFrame, output_dir: str):
         category_data = [df_valid[df_valid['optimizer_category'] == cat]['best_cer'].values
                         for cat in df_valid['optimizer_category'].unique()]
         bp = ax2.boxplot(category_data,
-                        labels=df_valid['optimizer_category'].unique(),
+                        tick_labels=df_valid['optimizer_category'].unique(),
                         patch_artist=True, showmeans=True, meanline=True)
         for patch in bp['boxes']:
             patch.set_facecolor('lightblue')
@@ -251,87 +242,20 @@ def create_comprehensive_dashboard(df: pd.DataFrame, output_dir: str):
 
 
 def create_optimizer_family_comparison(df: pd.DataFrame, output_dir: str):
-    """
-    Create detailed comparison of optimizer families.
-
-    Args:
-        df: DataFrame with all results
-        output_dir: Directory to save plots
-    """
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    fig, axes = plt.subplots(1, 1, figsize=(16, 12))
     fig.suptitle('Optimizer Family Analysis', fontsize=18, fontweight='bold')
 
     df_valid = df[df['best_cer'] != float('inf')]
-
-    # 1. Category performance summary
-    ax1 = axes[0, 0]
-    category_stats = df_valid.groupby('optimizer_category')['best_cer'].agg(['mean', 'std', 'min', 'count'])
-    category_stats = category_stats.sort_values('mean')
-
-    x = range(len(category_stats))
-    ax1.bar(x, category_stats['mean'], yerr=category_stats['std'],
-           capsize=5, alpha=0.7, color='steelblue', edgecolor='black')
-    ax1.scatter(x, category_stats['min'], color='red', s=100,
-               zorder=5, label='Best in category', marker='*')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(category_stats.index, rotation=45, ha='right')
-    ax1.set_ylabel('CER', fontweight='bold')
-    ax1.set_title('Mean Performance by Optimizer Category', fontweight='bold')
-    ax1.legend()
-    ax1.grid(axis='y', alpha=0.3)
-
-    # Add count labels
-    for i, count in enumerate(category_stats['count']):
-        ax1.text(i, category_stats['mean'].iloc[i], f'n={int(count)}',
-                ha='center', va='bottom', fontsize=8)
-
-    # 2. Individual optimizer comparison
-    ax2 = axes[0, 1]
-    opt_stats = df_valid.groupby('optimizer')['best_cer'].agg(['mean', 'std', 'min', 'count'])
-    opt_stats = opt_stats.sort_values('mean').head(10)
-
-    x = range(len(opt_stats))
-    ax2.barh(x, opt_stats['mean'], xerr=opt_stats['std'],
-            capsize=5, alpha=0.7, color='coral', edgecolor='black')
-    ax2.scatter(opt_stats['min'], x, color='darkred', s=100,
-               zorder=5, label='Best config', marker='*')
-    ax2.set_yticks(x)
-    ax2.set_yticklabels(opt_stats.index)
-    ax2.set_xlabel('CER', fontweight='bold')
-    ax2.set_title('Top 10 Optimizers (Mean ± Std)', fontweight='bold')
-    ax2.legend()
-    ax2.grid(axis='x', alpha=0.3)
-
-    # 3. Adaptive vs Non-adaptive comparison
-    ax3 = axes[1, 0]
-    adaptive_comparison = df_valid.groupby('is_adaptive')['best_cer'].apply(list)
-
-    if len(adaptive_comparison) == 2:
-        data = [adaptive_comparison[False], adaptive_comparison[True]]
-        bp = ax3.boxplot(data, labels=['Non-Adaptive', 'Adaptive'],
-                        patch_artist=True, showmeans=True, meanprops=dict(marker='D', markerfacecolor='red'))
-        bp['boxes'][0].set_facecolor('lightgreen')
-        bp['boxes'][1].set_facecolor('lightcoral')
-        ax3.set_ylabel('Best CER', fontweight='bold')
-        ax3.set_title('Adaptive vs Non-Adaptive Optimizers', fontweight='bold')
-        ax3.grid(axis='y', alpha=0.3)
-
-        # Add statistical test
-        statistic, pvalue = stats.mannwhitneyu(data[0], data[1], alternative='two-sided')
-        ax3.text(0.5, 0.95, f'Mann-Whitney U p={pvalue:.4f}',
-                transform=ax3.transAxes, ha='center', va='top',
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-
-    # 4. Heatmap: Optimizer vs Scheduler
-    ax4 = axes[1, 1]
+    
+    # Heatmap: Optimizer vs Scheduler
+    ax4 = axes
     pivot_data = df_valid.pivot_table(values='best_cer',
                                        index='optimizer',
                                        columns='scheduler',
                                        aggfunc='mean')
 
     if not pivot_data.empty:
-        sns.heatmap(pivot_data, annot=True, fmt='.4f', cmap='RdYlGn_r',
-                   ax=ax4, cbar_kws={'label': 'Best CER'}, linewidths=0.5)
+        sns.heatmap(pivot_data, annot=True, fmt='.4f', cmap='RdYlGn_r', ax=ax4, cbar_kws={'label': 'Best CER'}, linewidths=0.5)
         ax4.set_title('Optimizer × Scheduler Performance Matrix', fontweight='bold')
         ax4.set_xlabel('Scheduler', fontweight='bold')
         ax4.set_ylabel('Optimizer', fontweight='bold')
@@ -361,8 +285,7 @@ def create_convergence_analysis(df: pd.DataFrame, output_dir: str):
     top10 = df.head(10)
     for idx, row in top10.iterrows():
         if len(row['testCER']) > 0:
-            ax1.plot(row['testCER'], label=f"#{row['rank']} {row['optimizer']}",
-                    linewidth=2, alpha=0.7)
+            ax1.plot(row['testCER'], label=f"#{row['rank']} {row['optimizer']}", linewidth=2, alpha=0.7)
     ax1.set_xlabel('Evaluation Step')
     ax1.set_ylabel('Test CER')
     ax1.set_title('Top 10: Test CER Convergence', fontweight='bold')
@@ -373,8 +296,7 @@ def create_convergence_analysis(df: pd.DataFrame, output_dir: str):
     ax2 = axes[0, 1]
     for idx, row in top10.iterrows():
         if len(row['testLoss']) > 0:
-            ax2.plot(row['testLoss'], label=f"#{row['rank']} {row['optimizer']}",
-                    linewidth=2, alpha=0.7)
+            ax2.plot(row['testLoss'], label=f"#{row['rank']} {row['optimizer']}", linewidth=2, alpha=0.7)
     ax2.set_xlabel('Evaluation Step')
     ax2.set_ylabel('Test Loss')
     ax2.set_title('Top 10: Test Loss Convergence', fontweight='bold')
@@ -385,8 +307,7 @@ def create_convergence_analysis(df: pd.DataFrame, output_dir: str):
     ax3 = axes[0, 2]
     for idx, row in top10.iterrows():
         if len(row['learning_rates']) > 0:
-            ax3.plot(row['learning_rates'], label=f"#{row['rank']} {row['scheduler']}",
-                    linewidth=2, alpha=0.7)
+            ax3.plot(row['learning_rates'], label=f"#{row['rank']} {row['scheduler']}", linewidth=2, alpha=0.7)
     ax3.set_xlabel('Training Step')
     ax3.set_ylabel('Learning Rate')
     ax3.set_title('Top 10: Learning Rate Schedules', fontweight='bold')
@@ -440,8 +361,7 @@ def create_convergence_analysis(df: pd.DataFrame, output_dir: str):
     df_improvement = df[df['cer_improvement'] > 0].head(10)
     if len(df_improvement) > 0:
         colors = plt.cm.viridis(np.linspace(0, 1, len(df_improvement)))
-        bars = ax6.barh(range(len(df_improvement)), df_improvement['cer_improvement_pct'],
-                       color=colors, edgecolor='black')
+        bars = ax6.barh(range(len(df_improvement)), df_improvement['cer_improvement_pct'], color=colors, edgecolor='black')
         ax6.set_yticks(range(len(df_improvement)))
         ax6.set_yticklabels([f"{row['optimizer']}" for _, row in df_improvement.iterrows()],
                            fontsize=9)
@@ -457,20 +377,12 @@ def create_convergence_analysis(df: pd.DataFrame, output_dir: str):
     plt.tight_layout()
 
     os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(os.path.join(output_dir, 'convergence_analysis.png'),
-                bbox_inches='tight', dpi=300)
+    plt.savefig(os.path.join(output_dir, 'convergence_analysis.png'), bbox_inches='tight', dpi=300)
     print(f"Saved convergence analysis to {output_dir}/convergence_analysis.png")
     plt.close()
 
 
 def create_hyperparameter_analysis(df: pd.DataFrame, output_dir: str):
-    """
-    Analyze hyperparameter sensitivity.
-
-    Args:
-        df: DataFrame with all results
-        output_dir: Directory to save plots
-    """
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
     fig.suptitle('Hyperparameter Sensitivity Analysis', fontsize=18, fontweight='bold')
 
@@ -480,8 +392,7 @@ def create_hyperparameter_analysis(df: pd.DataFrame, output_dir: str):
     ax1 = axes[0, 0]
     df_lr = df_valid[df_valid['lr'].notna() & (df_valid['lr'] < 1.0)]
     if len(df_lr) > 0:
-        lr_bins = np.logspace(np.log10(df_lr['lr'].min()),
-                             np.log10(df_lr['lr'].max()), 15)
+        lr_bins = np.logspace(np.log10(df_lr['lr'].min()), np.log10(df_lr['lr'].max()), 15)
 
         # Bin data
         df_lr['lr_bin'] = pd.cut(df_lr['lr'], bins=lr_bins)
@@ -489,8 +400,7 @@ def create_hyperparameter_analysis(df: pd.DataFrame, output_dir: str):
         lr_stats = lr_stats[lr_stats['count'] > 0]
 
         bin_centers = [interval.mid for interval in lr_stats.index]
-        ax1.errorbar(bin_centers, lr_stats['mean'], yerr=lr_stats['std'],
-                    fmt='o-', capsize=5, linewidth=2, markersize=8, alpha=0.7)
+        ax1.errorbar(bin_centers, lr_stats['mean'], yerr=lr_stats['std'], fmt='o-', capsize=5, linewidth=2, markersize=8, alpha=0.7)
         ax1.set_xlabel('Learning Rate', fontweight='bold')
         ax1.set_ylabel('Mean Best CER', fontweight='bold')
         ax1.set_xscale('log')
@@ -504,8 +414,7 @@ def create_hyperparameter_analysis(df: pd.DataFrame, output_dir: str):
         wd_stats = df_wd.groupby('weight_decay')['best_cer'].agg(['mean', 'std', 'count'])
 
         x = range(len(wd_stats))
-        ax2.bar(x, wd_stats['mean'], yerr=wd_stats['std'],
-               capsize=5, alpha=0.7, color='teal', edgecolor='black')
+        ax2.bar(x, wd_stats['mean'], yerr=wd_stats['std'], capsize=5, alpha=0.7, color='teal', edgecolor='black')
         ax2.set_xticks(x)
         ax2.set_xticklabels([f'{wd:.0e}' for wd in wd_stats.index], rotation=45)
         ax2.set_ylabel('Mean Best CER', fontweight='bold')
@@ -515,8 +424,7 @@ def create_hyperparameter_analysis(df: pd.DataFrame, output_dir: str):
 
         # Add count labels
         for i, count in enumerate(wd_stats['count']):
-            ax2.text(i, wd_stats['mean'].iloc[i], f'n={int(count)}',
-                    ha='center', va='bottom', fontsize=8)
+            ax2.text(i, wd_stats['mean'].iloc[i], f'n={int(count)}', ha='center', va='bottom', fontsize=8)
 
     # 3. LR vs WD Heatmap
     ax3 = axes[1, 0]
@@ -551,7 +459,7 @@ def create_hyperparameter_analysis(df: pd.DataFrame, output_dir: str):
     rank_data = [df_valid[df_valid['rank_category'] == cat]['best_cer'].values
                 for cat in rank_labels if cat in df_valid['rank_category'].values]
 
-    bp = ax4.boxplot(rank_data, labels=rank_labels[:len(rank_data)],
+    bp = ax4.boxplot(rank_data, tick_labels=rank_labels[:len(rank_data)],
                     patch_artist=True, showmeans=True)
 
     colors = plt.cm.RdYlGn(np.linspace(0.7, 0.3, len(rank_data)))

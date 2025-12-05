@@ -1,13 +1,12 @@
 """
-Memory-efficient data preparation for low-memory systems.
-Processes one session at a time and saves incrementally.
+Prepare competition data by converting .mat files to pickle format.
+Based on notebooks/formatCompetitionData.ipynb
 """
 import os
 import re
 import pickle
 import numpy as np
 import scipy.io
-import gc
 
 # Download required NLTK data for g2p_en
 import nltk
@@ -40,16 +39,21 @@ def loadFeaturesAndNormalize(sessionPath):
 
     input_features = []
     transcriptions = []
+    frame_lens = []
     n_trials = dat['sentenceText'].shape[0]
 
-    # Collect features
+    # Collect area 6v tx1 and spikePow features
     for i in range(n_trials):
-        # Only keep area 6v (first 128 columns)
-        features = np.concatenate([dat['tx1'][0, i][:, 0:128], dat['spikePow'][0, i][:, 0:128]], axis=1).astype(np.float32)
+        # Get time series of TX and spike power for this trial
+        # First 128 columns = area 6v only
+        features = np.concatenate([dat['tx1'][0, i][:, 0:128], dat['spikePow'][0, i][:, 0:128]], axis=1)
+
+        sentence_len = features.shape[0]
         sentence = dat['sentenceText'][i].strip()
 
         input_features.append(features)
         transcriptions.append(sentence)
+        frame_lens.append(sentence_len)
 
     # Block-wise feature normalization
     blockNums = np.squeeze(dat['blockIdx'])
@@ -61,23 +65,18 @@ def loadFeaturesAndNormalize(sessionPath):
         blocks.append(sentIdx)
 
     for b in range(len(blocks)):
-        feats = np.concatenate([input_features[i] for i in blocks[b]], axis=0)
+        feats = np.concatenate(input_features[blocks[b][0]:(blocks[b][-1] + 1)], axis=0)
         feats_mean = np.mean(feats, axis=0, keepdims=True)
         feats_std = np.std(feats, axis=0, keepdims=True)
-        del feats  
-        gc.collect()
-
         for i in blocks[b]:
             input_features[i] = (input_features[i] - feats_mean) / (feats_std + 1e-8)
 
+    # Convert to session data format
     session_data = {
         'inputFeatures': input_features,
         'transcriptions': transcriptions,
+        'frameLens': frame_lens
     }
-
-    # Clear the loaded mat file from memory
-    del dat
-    gc.collect()
 
     return session_data
 
@@ -102,24 +101,24 @@ def getDataset(fileName):
         for p in g2p(thisTranscription):
             if addInterWordSymbol and p == ' ':
                 phonemes.append('SIL')
-            p = re.sub(r'[0-9]', '', p)
-            if re.match(r'[A-Z]+', p):
+            p = re.sub(r'[0-9]', '', p)  # Remove stress
+            if re.match(r'[A-Z]+', p):  # Only keep phonemes
                 phonemes.append(p)
 
+        # Add one SIL symbol at the end
         if addInterWordSymbol:
             phonemes.append('SIL')
 
         seqLen = len(phonemes)
         maxSeqLen = 500
-        seqClassIDs = np.zeros([maxSeqLen], dtype=np.int32)
+        seqClassIDs = np.zeros([maxSeqLen]).astype(np.int32)
         seqClassIDs[0:seqLen] = [phoneToId(p) + 1 for p in phonemes]
         seqElements.append(seqClassIDs)
 
-    newDataset = {
-        'sentenceDat': allDat,
-        'transcriptions': trueSentences,
-        'phonemes': seqElements
-    }
+    newDataset = {}
+    newDataset['sentenceDat'] = allDat
+    newDataset['transcriptions'] = trueSentences
+    newDataset['phonemes'] = seqElements
 
     timeSeriesLens = []
     phoneLens = []
@@ -129,91 +128,90 @@ def getDataset(fileName):
         zeroIdx = np.argwhere(newDataset['phonemes'][x] == 0)
         phoneLens.append(zeroIdx[0, 0])
 
-    newDataset['timeSeriesLens'] = np.array(timeSeriesLens, dtype=np.int32)
-    newDataset['phoneLens'] = np.array(phoneLens, dtype=np.int32)
+    newDataset['timeSeriesLens'] = np.array(timeSeriesLens)
+    newDataset['phoneLens'] = np.array(phoneLens)
     newDataset['phonePerTime'] = newDataset['phoneLens'].astype(np.float32) / newDataset['timeSeriesLens'].astype(np.float32)
-
-    # Clear session_data
-    del session_data
-    gc.collect()
-
     return newDataset
 
 
 def main():
+    # Update these paths
     dataDir = '/home/iseanbhanot/dataset/competitionData'
     outputFile = '/home/iseanbhanot/dataset/ptDecoder_ctc.pkl'
 
-    # Get session names
+    # Get session names from the train directory
     train_dir = os.path.join(dataDir, 'train')
     mat_files = [f.replace('.mat', '') for f in os.listdir(train_dir) if f.endswith('.mat')]
     sessionNames = sorted(mat_files)
 
     print(f"Found {len(sessionNames)} sessions")
-    print(f"Processing with aggressive memory management...")
-    print(f"Available memory: {os.popen('free -h | grep Mem').read().strip()}\n")
+    print(f"Processing in batches to conserve memory...")
 
     trainDatasets = []
     testDatasets = []
     competitionDatasets = []
 
-    for idx, sessionName in enumerate(sessionNames):
-        print(f"[{idx + 1}/{len(sessionNames)}] {sessionName}", end='', flush=True)
+    # Process in smaller batches to avoid memory issues
+    batch_size = 4
+    for batch_start in range(0, len(sessionNames), batch_size):
+        batch_end = min(batch_start + batch_size, len(sessionNames))
+        batch_sessions = sessionNames[batch_start:batch_end]
 
-        try:
-            # Process train data
-            train_path = os.path.join(dataDir, 'train', sessionName + '.mat')
-            if os.path.exists(train_path):
-                print(" (train)", end='', flush=True)
-                trainDataset = getDataset(train_path)
-                trainDatasets.append(trainDataset)
-                del trainDataset
-                gc.collect()
+        print(f"\nProcessing batch {batch_start//batch_size + 1}/{(len(sessionNames) + batch_size - 1)//batch_size}")
 
-            # Process test data
-            test_path = os.path.join(dataDir, 'test', sessionName + '.mat')
-            if os.path.exists(test_path):
-                print(" (test)", end='', flush=True)
-                testDataset = getDataset(test_path)
-                testDatasets.append(testDataset)
-                del testDataset
-                gc.collect()
+        for sessionName in batch_sessions:
+            dayIdx = sessionNames.index(sessionName)
+            print(f"  [{dayIdx + 1}/{len(sessionNames)}] {sessionName}")
 
-            # Process competition hold-out data
-            comp_path = os.path.join(dataDir, 'competitionHoldOut', sessionName + '.mat')
-            if os.path.exists(comp_path):
-                print(" (comp)", end='', flush=True)
-                dataset = getDataset(comp_path)
-                competitionDatasets.append(dataset)
-                del dataset
-                gc.collect()
+            try:
+                # Process train data
+                train_path = os.path.join(dataDir, 'train', sessionName + '.mat')
+                if os.path.exists(train_path):
+                    trainDataset = getDataset(train_path)
+                    trainDatasets.append(trainDataset)
+                    del trainDataset  # Free memory immediately
 
-            print(" Good!")
+                # Process test data
+                test_path = os.path.join(dataDir, 'test', sessionName + '.mat')
+                if os.path.exists(test_path):
+                    testDataset = getDataset(test_path)
+                    testDatasets.append(testDataset)
+                    del testDataset  # Free memory immediately
 
-        except MemoryError as e:
-            print(f" x MEMORY ERROR - Instance may crash!")
-            print(f"Try reducing batch_size or upgrading instance memory")
-            raise
-        except Exception as e:
-            print(f" x ERROR: {e}")
-            raise
+                # Process competition hold-out data
+                comp_path = os.path.join(dataDir, 'competitionHoldOut', sessionName + '.mat')
+                if os.path.exists(comp_path):
+                    dataset = getDataset(comp_path)
+                    competitionDatasets.append(dataset)
+                    del dataset  # Free memory immediately
+
+            except MemoryError:
+                print(f"  WARNING: Memory error processing {sessionName}, skipping...")
+                continue
+            except Exception as e:
+                print(f"  ERROR processing {sessionName}: {e}")
+                raise
+
+        # Force garbage collection after each batch
+        import gc
+        gc.collect()
+        print(f"  Batch complete. Memory freed.")
 
     # Save to pickle file
-    print(f"\nSaving to {outputFile}...")
     allDatasets = {
         'train': trainDatasets,
         'test': testDatasets,
         'competition': competitionDatasets
     }
 
+    print(f"\nSaving to {outputFile}")
     with open(outputFile, 'wb') as handle:
         pickle.dump(allDatasets, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    # Clear memory
-    del allDatasets, trainDatasets, testDatasets, competitionDatasets
-    gc.collect()
-
-    print(f"Done!")
+    print(f"Done! Processed:")
+    print(f"  - {len(trainDatasets)} train datasets")
+    print(f"  - {len(testDatasets)} test datasets")
+    print(f"  - {len(competitionDatasets)} competition datasets")
 
 
 if __name__ == '__main__':

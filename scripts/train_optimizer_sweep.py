@@ -18,7 +18,7 @@ from typing import Dict, List, Any
 import datetime
 import pickle
 
-# Add the src directory to the Python path
+# fix for import error
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 # Set PyTorch memory allocation to avoid fragmentation
@@ -45,7 +45,6 @@ def get_optimizer_configs() -> List[Dict[str, Any]]:
 
     # ------------------------------------------------------------------------
     # 1. AdamW (SOTA baseline - Decoupled Weight Decay Regularization)
-    # 3 configurations (reduced from 6)
     # ------------------------------------------------------------------------
     for lr in [1e-3, 2e-3]:
         configs.append({
@@ -71,7 +70,6 @@ def get_optimizer_configs() -> List[Dict[str, Any]]:
 
     # ------------------------------------------------------------------------
     # 2. Lion Optimizer (Evolved Sign Momentum - Google 2023)
-    # 2 configurations (reduced from 4)
     # ------------------------------------------------------------------------
     for lr in [1e-4, 3e-4]:
         configs.append({
@@ -84,7 +82,6 @@ def get_optimizer_configs() -> List[Dict[str, Any]]:
 
     # ------------------------------------------------------------------------
     # 3. Sophia (Second-order Clipped Stochastic Optimization - 2023)
-    # 2 configurations (kept same)
     # ------------------------------------------------------------------------
     for lr in [1e-4, 3e-4]:
         configs.append({
@@ -98,13 +95,12 @@ def get_optimizer_configs() -> List[Dict[str, Any]]:
 
     # ------------------------------------------------------------------------
     # 4. Prodigy (Adaptive Learning Rate - Auto LR tuning)
-    # 2 configurations (kept same)
     # ------------------------------------------------------------------------
     for d0 in [1e-6, 1e-5]:
         configs.append({
             'name': f'Prodigy_d0{d0}',
             'optimizer': 'Prodigy',
-            'lr': 1.0,  # Prodigy adapts LR automatically
+            'lr': 1.0, 
             'betas': (0.9, 0.999),
             'beta3': 0.9,
             'd0': d0,
@@ -115,12 +111,6 @@ def get_optimizer_configs() -> List[Dict[str, Any]]:
 
 
 def get_scheduler_configs() -> List[Dict[str, Any]]:
-    """
-    Returns learning rate scheduler configurations.
-
-    Reduced to 3 key schedulers.
-    17 optimizers × 3 schedulers = 51 configurations (target: 50)
-    """
     return [
         {
             'name': 'cosine',
@@ -131,8 +121,8 @@ def get_scheduler_configs() -> List[Dict[str, Any]]:
         {
             'name': 'onecycle',
             'type': 'OneCycleLR',
-            'max_lr': None,  # Will be set to optimizer lr
-            'total_steps': None,  # Will be set to nBatch
+            'max_lr': None, 
+            'total_steps': None, 
             'pct_start': 0.3,
             'anneal_strategy': 'cos',
         },
@@ -149,10 +139,6 @@ def get_scheduler_configs() -> List[Dict[str, Any]]:
 # ============================================================================
 
 def get_optimizer(model, config):
-    """
-    Returns the optimizer based on the configuration.
-    Installs required packages if needed.
-    """
     optimizer_name = config['optimizer']
 
     if optimizer_name == 'AdamW':
@@ -166,12 +152,7 @@ def get_optimizer(model, config):
         )
 
     elif optimizer_name == 'Lion':
-        try:
-            from lion_pytorch import Lion
-        except ImportError:
-            print("Installing lion-pytorch...")
-            os.system("pip install lion-pytorch")
-            from lion_pytorch import Lion
+        from lion_pytorch import Lion
 
         return Lion(
             model.parameters(),
@@ -181,12 +162,7 @@ def get_optimizer(model, config):
         )
 
     elif optimizer_name == 'Sophia':
-        try:
-            from sophia import SophiaG
-        except ImportError:
-            print("Installing sophia-optimizer...")
-            os.system("pip install sophia-optimizer")
-            from sophia import SophiaG
+        from sophia import SophiaG
 
         return SophiaG(
             model.parameters(),
@@ -197,12 +173,7 @@ def get_optimizer(model, config):
         )
 
     elif optimizer_name == 'AdEMAMix':
-        try:
-            from ademamix import AdEMAMix
-        except ImportError:
-            print("Installing ademamix-optimizer...")
-            os.system("pip install git+https://github.com/nanowell/AdEMAMix-Optimizer-Pytorch.git")
-            from ademamix import AdEMAMix
+        from ademamix import AdEMAMix
 
         return AdEMAMix(
             model.parameters(),
@@ -213,12 +184,7 @@ def get_optimizer(model, config):
         )
 
     elif optimizer_name == 'Prodigy':
-        try:
-            from prodigyopt import Prodigy
-        except ImportError:
-            print("Installing prodigyopt...")
-            os.system("pip install prodigyopt")
-            from prodigyopt import Prodigy
+        from prodigyopt import Prodigy
 
         return Prodigy(
             model.parameters(),
@@ -230,12 +196,7 @@ def get_optimizer(model, config):
         )
 
     elif optimizer_name == 'Adan':
-        try:
-            from adan import Adan
-        except ImportError:
-            print("Installing adan-optimizer...")
-            os.system("pip install git+https://github.com/sail-sg/Adan.git")
-            from adan import Adan
+       from adan import Adan
 
         return Adan(
             model.parameters(),
@@ -245,12 +206,7 @@ def get_optimizer(model, config):
         )
 
     elif optimizer_name == 'LAMB':
-        try:
-            from pytorch_lamb import Lamb
-        except ImportError:
-            print("Installing pytorch-lamb...")
-            os.system("pip install pytorch-lamb")
-            from pytorch_lamb import Lamb
+        from pytorch_lamb import Lamb
 
         return Lamb(
             model.parameters(),
@@ -260,12 +216,7 @@ def get_optimizer(model, config):
         )
 
     elif optimizer_name == 'Novograd':
-        try:
-            from nvidia_novograd import Novograd
-        except ImportError:
-            print("Installing nvidia-novograd...")
-            os.system("pip install nvidia-novograd")
-            from nvidia_novograd import Novograd
+        from nvidia_novograd import Novograd
 
         return Novograd(
             model.parameters(),
@@ -279,9 +230,6 @@ def get_optimizer(model, config):
 
 
 def get_scheduler(optimizer, scheduler_config, nBatch):
-    """
-    Returns the learning rate scheduler based on configuration.
-    """
     scheduler_type = scheduler_config['type']
 
     if scheduler_type == 'CosineAnnealingLR':
@@ -309,7 +257,7 @@ def get_scheduler(optimizer, scheduler_config, nBatch):
             anneal_strategy=scheduler_config.get('anneal_strategy', 'cos'),
         )
 
-    elif scheduler_type == 'PolynomialLR':
+    elif scheduler_type == 'PolynomialLR': 
         return torch.optim.lr_scheduler.PolynomialLR(
             optimizer,
             total_iters=scheduler_config.get('total_iters') or nBatch,
@@ -335,18 +283,10 @@ def get_scheduler(optimizer, scheduler_config, nBatch):
 
 
 def wrap_with_lookahead(optimizer, config):
-    """
-    Wraps optimizer with Lookahead if specified in config.
-    """
     if not config.get('use_lookahead', False):
         return optimizer
 
-    try:
-        from pytorch_optimizer import Lookahead
-    except ImportError:
-        print("Installing pytorch-optimizer for Lookahead...")
-        os.system("pip install pytorch-optimizer")
-        from pytorch_optimizer import Lookahead
+    from pytorch_optimizer import Lookahead
 
     return Lookahead(
         optimizer,
@@ -365,12 +305,6 @@ def train_single_config(
     scheduler_config: Dict[str, Any],
     run_id: int,
 ) -> Dict[str, Any]:
-    """
-    Train a single model with given optimizer and scheduler configuration.
-
-    Returns:
-        Dictionary containing training results and metadata.
-    """
     import time
     import pickle
     from torch.nn.utils.rnn import pad_sequence
@@ -442,7 +376,7 @@ def train_single_config(
     # Loss function
     loss_ctc = torch.nn.CTCLoss(blank=0, reduction="mean", zero_infinity=True)
 
-    # Training loop
+    # Training loop (copied from given train.py)
     testLoss = []
     testCER = []
     trainLoss = []
@@ -679,14 +613,6 @@ def run_optimizer_sweep(
     optimizer_configs: List[Dict[str, Any]] = None,
     scheduler_configs: List[Dict[str, Any]] = None,
 ):
-    """
-    Run the full optimizer sweep.
-
-    Args:
-        base_args: Base training arguments
-        optimizer_configs: List of optimizer configurations (if None, uses all)
-        scheduler_configs: List of scheduler configurations (if None, uses all)
-    """
     if optimizer_configs is None:
         optimizer_configs = get_optimizer_configs()
 
@@ -710,11 +636,7 @@ def run_optimizer_sweep(
     start_run_id = 27  # Resume from run 26
     for run_id, (opt_config, sched_config) in enumerate(all_configs):
         # Skip runs before start_run_id
-        if run_id < start_run_id:
-            print(f"Skipping run {run_id} (already completed)")
-            continue
-
-        try:
+        if run_id >= start_run_id:
             results = train_single_config(
                 base_args=base_args,
                 opt_config=opt_config,
@@ -722,11 +644,6 @@ def run_optimizer_sweep(
                 run_id=run_id,
             )
             all_results.append(results)
-        except Exception as e:
-            print(f"ERROR in run {run_id}: {e}")
-            import traceback
-            traceback.print_exc()
-            continue
 
     # Create comprehensive comparison metrics
     comparison_metrics = []
@@ -749,8 +666,6 @@ def run_optimizer_sweep(
 
     # Sort by best CER
     comparison_metrics_sorted = sorted(comparison_metrics, key=lambda x: x['best_cer'])
-
-    # Save summary
     summary = {
         'total_runs': len(all_results),
         'best_run': min(all_results, key=lambda x: x['best_cer']) if all_results else None,
@@ -830,10 +745,10 @@ if __name__ == '__main__':
 
         # Training
         'batchSize': 32,
-        'nBatch': 2500,  # Reduced from 5000 to half
+        'nBatch': 2500,  
         'seed': 0,
         'eval_every': 100,
-        'grad_clip': 1.0,  # Gradient clipping
+        'grad_clip': 1.0, 
     }
 
     # Get configurations
